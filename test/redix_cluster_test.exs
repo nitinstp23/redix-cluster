@@ -1,5 +1,5 @@
 defmodule RedixClusterTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: false
 
   setup _ do
     nodes = [
@@ -16,11 +16,54 @@ defmodule RedixClusterTest do
 
   describe "start_link/2" do
     test "connects to cluster with a list of nodes", %{nodes: nodes} do
-      {:ok, pid} = RedixCluster.start_link(name: :test_cluster, nodes: nodes)
+      cluster_name = :test_cluster
+
+      {:ok, pid} = RedixCluster.start_link(name: cluster_name, nodes: nodes)
 
       assert is_pid(pid)
+      assert RedixCluster.command(cluster_name, ["PING"]) == {:ok, "PONG"}
 
-      assert RedixCluster.command(pid, ["PING"]) == {:ok, "PONG"}
+      # verify cluster process state
+      {:connected, %RedixCluster.Connection{name: ^cluster_name, nodes: nodes_info}} =
+        :sys.get_state(pid)
+
+      assert Map.keys(nodes_info) == nodes
+    end
+
+    test "caches cluster slots info", %{nodes: nodes} do
+      cluster_name = :test_cluster
+
+      {:ok, pid} = RedixCluster.start_link(name: cluster_name, nodes: nodes)
+
+      {:connected,
+       %RedixCluster.Connection{name: ^cluster_name, nodes: _nodes, slot_loader: slot_loader_pid}} =
+        :sys.get_state(pid, 20_000)
+
+      assert is_pid(slot_loader_pid)
+      refute :ets.info(cluster_name) == :undefined
+
+      assert :ets.tab2list(cluster_name) == [
+               slot_info: [
+                 %{
+                   end_slot: 5460,
+                   master: %{ip: "127.0.0.1", port: 7000},
+                   replicas: [%{ip: "127.0.0.1", port: 7003}],
+                   start_slot: 0
+                 },
+                 %{
+                   end_slot: 10922,
+                   master: %{ip: "127.0.0.1", port: 7001},
+                   replicas: [%{ip: "127.0.0.1", port: 7004}],
+                   start_slot: 5461
+                 },
+                 %{
+                   end_slot: 16383,
+                   master: %{ip: "127.0.0.1", port: 7002},
+                   replicas: [%{ip: "127.0.0.1", port: 7005}],
+                   start_slot: 10923
+                 }
+               ]
+             ]
     end
   end
 end

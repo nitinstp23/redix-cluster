@@ -1,9 +1,14 @@
 defmodule RedixCluster.Connection do
   @moduledoc false
 
+  alias RedixCluster.SlotLoader
+
   @behaviour :gen_statem
 
-  defstruct [:nodes, :name]
+  # 10 seconds
+  @default_slot_refresh_interval 10
+
+  defstruct [:name, :nodes, :slot_refresh_interval, :slot_loader]
 
   ## Public API
 
@@ -13,12 +18,15 @@ defmodule RedixCluster.Connection do
     nodes = Keyword.fetch!(opts, :nodes)
     name = Keyword.fetch!(opts, :name)
 
-    :gen_statem.start_link({:local, name}, __MODULE__, {nodes, name}, [])
+    slot_refresh_interval =
+      Keyword.get(opts, :slot_refresh_interval, @default_slot_refresh_interval)
+
+    :gen_statem.start_link({:local, name}, __MODULE__, {nodes, name, slot_refresh_interval}, [])
   end
 
   @spec node_pid(atom()) :: {:ok, %__MODULE__{}}
-  def node_pid(conn) do
-    conn_pid = GenServer.whereis(conn)
+  def node_pid(name) when is_atom(name) do
+    conn_pid = GenServer.whereis(name)
 
     :gen_statem.call(conn_pid, :get_node)
     |> case do
@@ -38,10 +46,11 @@ defmodule RedixCluster.Connection do
   def callback_mode(), do: :state_functions
 
   @impl true
-  def init({nodes, name} = _opts) do
+  def init({nodes, name, slot_refresh_interval} = _opts) do
     data = %__MODULE__{
+      name: name,
       nodes: nodes,
-      name: name
+      slot_refresh_interval: slot_refresh_interval
     }
 
     actions = [{:next_event, :internal, :connect}]
@@ -59,7 +68,8 @@ defmodule RedixCluster.Connection do
       end)
       |> Map.new()
 
-    {:next_state, :connected, %{data | nodes: node_pids}}
+    actions = [{:next_event, :internal, :fetch_slot_info}]
+    {:next_state, :connected, %{data | nodes: node_pids}, actions}
   end
 
   def disconnected({:call, {from, ref}}, :get_node, data) do
@@ -67,6 +77,28 @@ defmodule RedixCluster.Connection do
 
     actions = [{:next_event, :internal, :connect}]
     {:ok, :disconnected, data, actions}
+  end
+
+  def connected(
+        :internal,
+        :fetch_slot_info,
+        %__MODULE__{name: name, nodes: nodes, slot_refresh_interval: slot_refresh_interval} = data
+      ) do
+    # TODO: Monitor slot_loader proc and handle crashes
+    {:ok, slot_loader} = SlotLoader.start_link(name, nodes, slot_refresh_interval)
+    data = %{data | slot_loader: slot_loader}
+
+    SlotLoader.slot_info(name)
+    |> case do
+      [] ->
+        # TODO: Add retry with backoff
+        SlotLoader.refresh_slot_info(name)
+
+        {:next_state, :connected, data}
+
+      _ ->
+        {:next_state, :connected, data}
+    end
   end
 
   def connected({:call, {from, ref}}, :get_node, %__MODULE__{nodes: nodes} = _data) do
