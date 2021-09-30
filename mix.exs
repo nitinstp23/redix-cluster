@@ -21,7 +21,8 @@ defmodule RedixCluster.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:redix, "~> 1.0"}
+      {:redix, "~> 1.0"},
+      {:nimble_options, "~> 0.3.0"}
     ]
   end
 end
