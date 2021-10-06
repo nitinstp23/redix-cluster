@@ -87,11 +87,34 @@ defmodule RedixClusterTest do
             "k1",
             "hello world",
             "this is a redix cluster repo",
-            "unicode !&*^@*#&漢字^"
-            # "a{bcd}" this is not working because of deterministic hashing, @todo https://redis.com/blog/redis-clustering-best-practices-with-keys/
+            "unicode !&*^@*#&漢字^",
+            "a{bcd}",
+            "a{bcd}{def}",
+            "a{bcd}{def}",
+            "{}xxx",
+            "}xxx",
+            "{xxx",
+            "{xx{x",
+            "{xx}{x",
+            "{xx}}{x",
+            "xxx}",
+            "xxx}{",
+            "xxx}{}",
+            "xxx{}",
+            "{}xxx{}",
+            "{}xxx{a}",
+            "{a}xxx{a}",
+            "{a}xxx{}",
+            "{a}xxx{this should not be considered}"
           ] do
         {:ok, expected_hash} = Redix.command(conn, ["CLUSTER", "KEYSLOT", key])
-        assert expected_hash == RedixCluster.SlotFinder.hash_slot(key)
+
+        actual_hash = RedixCluster.SlotFinder.hash_slot(key)
+
+        assert(
+          expected_hash == RedixCluster.SlotFinder.hash_slot(key),
+          "Generate hash for #{key}, expected: #{expected_hash} actual: #{actual_hash}"
+        )
       end
     end
   end

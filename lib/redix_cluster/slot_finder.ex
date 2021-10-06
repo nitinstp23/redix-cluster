@@ -262,7 +262,7 @@ defmodule RedixCluster.SlotFinder do
 
   @spec hash_slot(String.t()) :: integer()
   def hash_slot(key) do
-    bytes = :binary.bin_to_list(key)
+    bytes = key |> :binary.bin_to_list() |> extract_hashable_portion
 
     res =
       Enum.reduce(bytes, 0, fn element, crc ->
@@ -271,5 +271,16 @@ defmodule RedixCluster.SlotFinder do
 
     # equivalent to rem(res, 16384)
     res &&& 16384 - 1
+  end
+
+  defp extract_hashable_portion(key_bytes) do
+    index_1 = :string.chr(key_bytes, ?{)
+    index_2 = :string.chr(key_bytes, ?})
+
+    if index_1 > 0 && index_2 > 0 && index_2 > index_1 + 1 do
+      :string.substr(key_bytes, index_1 + 1, index_2 - index_1 - 1)
+    else
+      key_bytes
+    end
   end
 end
