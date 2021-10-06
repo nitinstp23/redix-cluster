@@ -69,18 +69,9 @@ defmodule RedixClusterTest do
   end
 
   describe "hash slot calculation" do
-    test "hash slot" do
-      nodes = [
-        "redis://localhost:7000",
-        "redis://localhost:7001",
-        "redis://localhost:7002",
-        "redis://localhost:7003",
-        "redis://localhost:7004",
-        "redis://localhost:7005"
-      ]
-
+    test "hash slot", %{nodes: nodes} do
       {:ok, _pid} = RedixCluster.start_link(name: :test_cluster, nodes: nodes)
-      {:ok, conn} = Redix.start_link(host: "localhost", port: 7000)
+      {:ok, conn} = Redix.start_link(nodes |> Enum.at(0))
 
       for key <- [
             "k",
@@ -103,7 +94,7 @@ defmodule RedixClusterTest do
             "xxx{}",
             "{}xxx{}",
             "{}xxx{a}",
-            "{a}xxx{a}",
+            "{a}xx:x{a}",
             "{a}xxx{}",
             "{a}xxx{this should not be considered}",
             "{}",
@@ -112,13 +103,12 @@ defmodule RedixClusterTest do
             "{abcd}{}a{}b{}c{}d",
             "{}a{}b{abcd}{}c{}d"
           ] do
-        {:ok, expected_hash} = Redix.command(conn, ["CLUSTER", "KEYSLOT", key])
-
-        actual_hash = RedixCluster.SlotFinder.hash_slot(key)
+        {:ok, correct_hash} = Redix.command(conn, ["CLUSTER", "KEYSLOT", key])
+        calculated_hash = RedixCluster.SlotFinder.hash_slot(key)
 
         assert(
-          expected_hash == RedixCluster.SlotFinder.hash_slot(key),
-          "Generate hash for #{key}, expected: #{expected_hash} actual: #{actual_hash}"
+          correct_hash == calculated_hash,
+          "Generate hash for #{key}, expected: #{correct_hash} actual: #{calculated_hash}"
         )
       end
     end
