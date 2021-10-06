@@ -66,4 +66,32 @@ defmodule RedixClusterTest do
              ]
     end
   end
+
+  describe "hash slot calculation" do
+    test "hash slot" do
+      nodes = [
+        "redis://localhost:7000",
+        "redis://localhost:7001",
+        "redis://localhost:7002",
+        "redis://localhost:7003",
+        "redis://localhost:7004",
+        "redis://localhost:7005"
+      ]
+
+      {:ok, _pid} = RedixCluster.start_link(name: :test_cluster, nodes: nodes)
+      {:ok, conn} = Redix.start_link(host: "localhost", port: 7000)
+
+      for key <- [
+            "k",
+            "k1",
+            "hello world",
+            "this is a redix cluster repo",
+            "unicode !&*^@*#&漢字^"
+            # "a{bcd}" this is not working because of deterministic hashing, @todo https://redis.com/blog/redis-clustering-best-practices-with-keys/
+          ] do
+        {:ok, expected_hash} = Redix.command(conn, ["CLUSTER", "KEYSLOT", key])
+        assert expected_hash == RedixCluster.SlotFinder.hash_slot(key)
+      end
+    end
+  end
 end
