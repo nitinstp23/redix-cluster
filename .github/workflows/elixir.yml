@@ -32,6 +32,6 @@ jobs:
     - name: Check running containers
       run: docker ps -a
     - name: Check logs
-      run: docker logs backend
+      run: docker logs redix-cluster_redis-cluster_1
     - name: Run tests
       run: mix test
