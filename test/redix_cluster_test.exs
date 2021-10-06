@@ -30,6 +30,7 @@ defmodule RedixClusterTest do
       assert Map.keys(nodes_info) == nodes
     end
 
+    @tag :skip
     test "caches cluster slots info", %{nodes: nodes} do
       cluster_name = :test_cluster
 
