@@ -88,8 +88,8 @@ defmodule RedixClusterTest do
             "hello world",
             "this is a redix cluster repo",
             "unicode !&*^@*#&漢字^",
+            "🥳",
             "a{bcd}",
-            "a{bcd}{def}",
             "a{bcd}{def}",
             "{}xxx",
             "}xxx",
@@ -105,7 +105,12 @@ defmodule RedixClusterTest do
             "{}xxx{a}",
             "{a}xxx{a}",
             "{a}xxx{}",
-            "{a}xxx{this should not be considered}"
+            "{a}xxx{this should not be considered}",
+            "{}",
+            "{}a{}b{}c{}d",
+            "{}a{}b{}c{}d{abcd}",
+            "{abcd}{}a{}b{}c{}d",
+            "{}a{}b{abcd}{}c{}d"
           ] do
         {:ok, expected_hash} = Redix.command(conn, ["CLUSTER", "KEYSLOT", key])
 

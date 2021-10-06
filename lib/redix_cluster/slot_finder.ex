@@ -274,11 +274,39 @@ defmodule RedixCluster.SlotFinder do
   end
 
   defp extract_hashable_portion(key_bytes) do
-    index_1 = :string.chr(key_bytes, ?{)
-    index_2 = :string.chr(key_bytes, ?})
+    # If there is a non-empty substring enclosed in braces {}, consider only that part in
+    # calculating the hash slot, see https://redis.io/commands/cluster-keyslot
+    #
+    #   > CLUSTER KEYSLOT foo{hash_tag}
+    #     (integer) 2515
+    #   > CLUSTER KEYSLOT bar{hash_tag}
+    #     (integer) 2515
 
-    if index_1 > 0 && index_2 > 0 && index_2 > index_1 + 1 do
-      :string.substr(key_bytes, index_1 + 1, index_2 - index_1 - 1)
+    %{end_found: end_found, start_idx: start_idx, end_idx: end_idx} =
+      Enum.reduce_while(
+        key_bytes,
+        %{start_found: false, end_found: false, start_idx: 0, end_idx: 0, i: 1},
+        fn ch, acc ->
+          updates =
+            cond do
+              ch == ?{ && !acc.start_found -> %{start_idx: acc.i, start_found: true}
+              ch == ?} && acc.start_found -> %{end_idx: acc.i, end_found: true}
+              true -> %{}
+            end
+
+          if Map.has_key?(updates, :end_found) do
+            {:halt, Map.merge(acc, updates)}
+          else
+            {:cont, Map.merge(acc, updates) |> Map.put(:i, acc.i + 1)}
+          end
+        end
+      )
+
+    if end_found &&
+         start_idx > 0 &&
+         end_idx > 0 &&
+         end_idx > start_idx + 1 do
+      :string.substr(key_bytes, start_idx + 1, end_idx - start_idx - 1)
     else
       key_bytes
     end
