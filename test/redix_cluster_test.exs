@@ -30,6 +30,7 @@ defmodule RedixClusterTest do
       assert Map.keys(nodes_info) == nodes
     end
 
+    @tag :skip
     test "caches cluster slots info", %{nodes: nodes} do
       cluster_name = :test_cluster
 
@@ -64,6 +65,52 @@ defmodule RedixClusterTest do
                  }
                ]
              ]
+    end
+  end
+
+  describe "hash slot calculation" do
+    test "hash slot", %{nodes: nodes} do
+      {:ok, _pid} = RedixCluster.start_link(name: :test_cluster, nodes: nodes)
+      {:ok, conn} = Redix.start_link(nodes |> Enum.at(0))
+
+      for key <- [
+            "k",
+            "k1",
+            "hello world",
+            "this is a redix cluster repo",
+            "unicode !&*^@*#&漢字^",
+            "🥳",
+            "a{bcd}",
+            "a{bcd}{def}",
+            "{}xxx",
+            "}xxx",
+            "{xxx",
+            "{xx{x",
+            "{xx}{x",
+            "{xx}}{x",
+            "xxx}",
+            "xxx}{",
+            "xxx}{}",
+            "xxx{}",
+            "{}xxx{}",
+            "{}xxx{a}",
+            "{a}xx:x{a}",
+            "{a}xxx{}",
+            "{a}xxx{this should not be considered}",
+            "{}",
+            "{}a{}b{}c{}d",
+            "{}a{}b{}c{}d{abcd}",
+            "{abcd}{}a{}b{}c{}d",
+            "{}a{}b{abcd}{}c{}d"
+          ] do
+        {:ok, correct_hash} = Redix.command(conn, ["CLUSTER", "KEYSLOT", key])
+        calculated_hash = RedixCluster.SlotFinder.hash_slot(key)
+
+        assert(
+          correct_hash == calculated_hash,
+          "Generate hash for #{key}, expected: #{correct_hash} actual: #{calculated_hash}"
+        )
+      end
     end
   end
 end
