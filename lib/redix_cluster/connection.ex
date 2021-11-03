@@ -1,7 +1,7 @@
 defmodule RedixCluster.Connection do
   @moduledoc false
 
-  alias RedixCluster.SlotLoader
+  alias RedixCluster.{SlotLoader, Options}
 
   @behaviour :gen_statem
 
@@ -14,14 +14,22 @@ defmodule RedixCluster.Connection do
 
   @spec start_link(keyword()) :: list()
   def start_link(opts) when is_list(opts) do
-    # TODO: add options validator
-    nodes = Keyword.fetch!(opts, :nodes)
-    name = Keyword.fetch!(opts, :name)
+    NimbleOptions.validate(opts, Options.definition())
+    |> case do
+      {:ok, [name: name, nodes: nodes]} ->
+        slot_refresh_interval =
+          Keyword.get(opts, :slot_refresh_interval, @default_slot_refresh_interval)
 
-    slot_refresh_interval =
-      Keyword.get(opts, :slot_refresh_interval, @default_slot_refresh_interval)
+        :gen_statem.start_link(
+          {:local, name},
+          __MODULE__,
+          {nodes, name, slot_refresh_interval},
+          []
+        )
 
-    :gen_statem.start_link({:local, name}, __MODULE__, {nodes, name, slot_refresh_interval}, [])
+      {:error, %NimbleOptions.ValidationError{message: error_message}} ->
+        {:error, error_message}
+    end
   end
 
   @spec node_pid(atom()) :: {:ok, %__MODULE__{}}
